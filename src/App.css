@@ -1,0 +1,362 @@
+:root {
+  color: #102335;
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.88), transparent 24%),
+    linear-gradient(180deg, #f4efe6 0%, #ebeff3 44%, #e3e9ee 100%);
+  font-family: "SF Pro Display", "IBM Plex Sans", "Segoe UI", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  min-height: 100vh;
+}
+
+button,
+code {
+  font-family: inherit;
+}
+
+button {
+  border: 0;
+  border-radius: 12px;
+  background: #dde4eb;
+  color: #102335;
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0.65rem 0.95rem;
+  transition:
+    transform 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease;
+}
+
+button:hover:not(:disabled) {
+  background: #cfdbe7;
+  box-shadow: 0 8px 20px rgba(16, 35, 53, 0.08);
+  transform: translateY(-1px);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none;
+}
+
+button.primary {
+  background: linear-gradient(135deg, #124f8a 0%, #1f6cb4 100%);
+  color: #f5f8fb;
+}
+
+button.primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #0f4678 0%, #1d5e9c 100%);
+}
+
+code {
+  font-family: "SFMono-Regular", "IBM Plex Mono", "Cascadia Mono", monospace;
+}
+
+.app-shell {
+  margin: 0 auto;
+  max-width: 1220px;
+  min-height: 100vh;
+  padding: 1.2rem 1.4rem 1.4rem;
+}
+
+.topbar {
+  margin-bottom: 1rem;
+}
+
+.title-block {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  gap: 0.24rem;
+  padding: 0;
+}
+
+.title-block h1 {
+  font-size: clamp(1.08rem, 1.8vw, 1.34rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  margin: 0;
+}
+
+.control-panel,
+.panel {
+  backdrop-filter: blur(14px);
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.52);
+  border-radius: 18px;
+  box-shadow: 0 10px 30px rgba(16, 35, 53, 0.07);
+}
+
+.control-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.78rem;
+  justify-content: space-between;
+  min-height: 0;
+  padding: 0.95rem;
+}
+
+.control-main {
+  align-items: center;
+  display: flex;
+  gap: 0.9rem;
+  justify-content: space-between;
+}
+
+.control-summary {
+  flex: 1;
+  min-width: 0;
+}
+
+.status-bar {
+  align-items: center;
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.7rem;
+  min-width: 0;
+}
+
+.status-pill {
+  align-items: center;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 0.8rem;
+  font-weight: 800;
+  gap: 0.5rem;
+  padding: 0.38rem 0.68rem;
+  width: fit-content;
+}
+
+.status-running {
+  background: rgba(18, 149, 117, 0.12);
+  color: #0b6f55;
+}
+
+.status-stopped {
+  background: rgba(171, 92, 47, 0.12);
+  color: #9b4a1e;
+}
+
+.status-dot {
+  background: currentColor;
+  border-radius: 999px;
+  display: inline-block;
+  height: 0.55rem;
+  width: 0.55rem;
+}
+
+.status-meta {
+  color: rgba(16, 35, 53, 0.72);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.panel {
+  padding: 0.95rem;
+}
+
+.panel-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.7rem;
+}
+
+.panel-header h2 {
+  font-size: 0.92rem;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+  margin: 0;
+}
+
+.panel-tag {
+  background: rgba(16, 35, 53, 0.08);
+  border-radius: 999px;
+  color: rgba(16, 35, 53, 0.68);
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.28rem 0.5rem;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
+.logs-panel {
+  background:
+    linear-gradient(180deg, rgba(17, 26, 38, 0.96) 0%, rgba(11, 18, 27, 0.98) 100%);
+  border: 1px solid rgba(48, 71, 95, 0.42);
+  color: #eef6ff;
+}
+
+.logs-panel .panel-header h2,
+.logs-panel .panel-tag {
+  color: #eef6ff;
+}
+
+.logs-panel .panel-tag {
+  background: rgba(238, 246, 255, 0.12);
+}
+
+.log-header-meta {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.log-header-streams {
+  color: rgba(238, 246, 255, 0.54);
+  font-size: 0.68rem;
+}
+
+.log-viewport {
+  background: rgba(8, 14, 21, 0.72);
+  border-radius: 14px;
+  height: min(68vh, 720px);
+  overflow: auto;
+  padding: 0.5rem 0.55rem;
+}
+
+.log-empty {
+  align-items: center;
+  color: rgba(238, 246, 255, 0.76);
+  display: flex;
+  flex-direction: column;
+  gap: 0.32rem;
+  justify-content: center;
+  min-height: 180px;
+  text-align: center;
+}
+
+.log-empty p,
+.log-empty strong {
+  font-size: 0.82rem;
+  margin: 0;
+}
+
+.log-entry {
+  align-items: flex-start;
+  border-bottom: 1px solid rgba(238, 246, 255, 0.06);
+  display: grid;
+  gap: 0.55rem;
+  grid-template-columns: 60px 64px minmax(0, 1fr);
+  padding: 0.48rem 0.36rem;
+}
+
+.log-entry:last-child {
+  border-bottom: 0;
+}
+
+.log-stream {
+  border-radius: 999px;
+  font-size: 0.64rem;
+  font-weight: 800;
+  padding: 0.22rem 0.42rem;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.log-stdout {
+  background: rgba(77, 182, 172, 0.14);
+  color: #83e0d6;
+}
+
+.log-stderr {
+  background: rgba(255, 133, 102, 0.16);
+  color: #ffb29a;
+}
+
+.log-system {
+  background: rgba(252, 211, 77, 0.16);
+  color: #ffd978;
+}
+
+.log-time {
+  color: rgba(238, 246, 255, 0.52);
+  display: block;
+  font-size: 0.7rem;
+  padding-top: 0.14rem;
+}
+
+.log-message {
+  color: #eef6ff;
+  font-family: "SFMono-Regular", "IBM Plex Mono", "Cascadia Mono", monospace;
+  font-size: 0.78rem;
+  line-height: 1.42;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 960px) {
+  .app-shell {
+    padding: 1rem;
+  }
+
+  .control-main,
+  .control-summary {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .actions {
+    margin-left: 0;
+  }
+
+  .log-viewport {
+    height: 56vh;
+  }
+}
+
+@media (max-width: 640px) {
+  .actions {
+    flex-direction: column;
+  }
+
+  .actions button {
+    width: 100%;
+  }
+
+  .log-header-meta {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .log-entry {
+    grid-template-columns: 1fr;
+  }
+
+  .log-time {
+    padding-top: 0;
+  }
+}
