@@ -43,6 +43,8 @@ struct GatewayStateInner {
 #[derive(Default)]
 struct GatewayRuntimeState {
     runtime: Option<GatewayProcess>,
+    service_running: bool,
+    service_started_at_ms: Option<u64>,
     last_error: Option<String>,
     last_exit: Option<GatewayExitInfo>,
     logs: VecDeque<GatewayLogEntry>,
@@ -115,6 +117,11 @@ impl GatewayState {
     }
 
     fn start(&self, app: &AppHandle) -> Result<GatewaySnapshot, String> {
+        #[cfg(target_os = "windows")]
+        {
+            return self.start_windows_gateway(app);
+        }
+
         {
             let state = self.inner.state.lock().expect("gateway state poisoned");
             if state.runtime.is_some() {
@@ -172,6 +179,11 @@ impl GatewayState {
     }
 
     fn stop(&self, app: &AppHandle) -> Result<GatewaySnapshot, String> {
+        #[cfg(target_os = "windows")]
+        {
+            return self.stop_windows_gateway(app);
+        }
+
         let runtime = {
             let mut state = self.inner.state.lock().expect("gateway state poisoned");
             match state.runtime.take() {
@@ -199,8 +211,17 @@ impl GatewayState {
     }
 
     fn restart(&self, app: &AppHandle) -> Result<GatewaySnapshot, String> {
+        #[cfg(target_os = "windows")]
+        {
+            self.push_log(app, "system", "正在重新启动网关服务。");
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            self.push_log(app, "system", "正在重新启动网关进程。");
+        }
+
         let _ = self.stop(app);
-        self.push_log(app, "system", "正在重新启动网关进程。");
         self.start(app)
     }
 
@@ -266,6 +287,159 @@ impl GatewayState {
         self.emit_state(app);
     }
 
+    #[cfg(target_os = "windows")]
+    fn start_windows_gateway(&self, app: &AppHandle) -> Result<GatewaySnapshot, String> {
+        {
+            let state = self.inner.state.lock().expect("gateway state poisoned");
+            if state.service_running {
+                return Ok(Self::snapshot_from_locked(&state));
+            }
+        }
+
+        let start_output = run_short_command(gateway_start_command());
+        if let Ok(output) = &start_output {
+            log_command_output(self, app, output);
+        }
+
+        let is_running = gateway_service_is_running();
+        if is_running {
+            let mut state = self.inner.state.lock().expect("gateway state poisoned");
+            state.service_running = true;
+            state.service_started_at_ms.get_or_insert(now_ms());
+            state.last_error = None;
+            state.last_exit = None;
+            drop(state);
+
+            self.push_log(app, "system", "网关服务已启动。");
+            self.emit_state(app);
+            return Ok(self.snapshot());
+        }
+
+        let install_output = run_short_command(gateway_install_command());
+        if let Ok(output) = &install_output {
+            log_command_output(self, app, output);
+        }
+
+        if gateway_service_is_running() {
+            let mut state = self.inner.state.lock().expect("gateway state poisoned");
+            state.service_running = true;
+            state.service_started_at_ms = Some(now_ms());
+            state.last_error = None;
+            state.last_exit = None;
+            drop(state);
+
+            self.push_log(app, "system", "网关服务已安装并启动。");
+            self.emit_state(app);
+            return Ok(self.snapshot());
+        }
+
+        let message = install_output
+            .err()
+            .or_else(|| start_output.err())
+            .unwrap_or_else(|| "启动网关服务失败，服务未保持运行。".to_string());
+
+        {
+            let mut state = self.inner.state.lock().expect("gateway state poisoned");
+            state.service_running = false;
+            state.service_started_at_ms = None;
+            state.last_error = Some(message.clone());
+            state.last_exit = None;
+        }
+
+        self.push_log(app, "system", message.clone());
+        self.emit_state(app);
+        Err(message)
+    }
+
+    #[cfg(target_os = "windows")]
+    fn stop_windows_gateway(&self, app: &AppHandle) -> Result<GatewaySnapshot, String> {
+        let output = run_short_command(gateway_stop_command());
+        if let Ok(output) = &output {
+            log_command_output(self, app, output);
+        }
+
+        let is_running = gateway_service_is_running();
+        if !is_running {
+            let exit = GatewayExitInfo {
+                at_ms: now_ms(),
+                code: Some(0),
+                success: true,
+            };
+
+            {
+                let mut state = self.inner.state.lock().expect("gateway state poisoned");
+                state.service_running = false;
+                state.service_started_at_ms = None;
+                state.last_error = None;
+                state.last_exit = Some(exit);
+            }
+
+            self.push_log(app, "system", "网关服务已停止。");
+            self.emit_state(app);
+            return Ok(self.snapshot());
+        }
+
+        let message = output
+            .err()
+            .unwrap_or_else(|| "停止网关服务失败，服务仍在运行。".to_string());
+
+        {
+            let mut state = self.inner.state.lock().expect("gateway state poisoned");
+            state.last_error = Some(message.clone());
+        }
+
+        self.push_log(app, "system", message.clone());
+        self.emit_state(app);
+        Err(message)
+    }
+
+    #[cfg(target_os = "windows")]
+    fn sync_windows_service_status(&self, app: &AppHandle) {
+        let is_running = gateway_service_is_running();
+
+        enum Transition {
+            None,
+            Started,
+            Stopped,
+        }
+
+        let transition = {
+            let mut state = self.inner.state.lock().expect("gateway state poisoned");
+            match (state.service_running, is_running) {
+                (false, true) => {
+                    state.service_running = true;
+                    state.service_started_at_ms.get_or_insert(now_ms());
+                    state.last_error = None;
+                    Transition::Started
+                }
+                (true, false) => {
+                    state.service_running = false;
+                    state.service_started_at_ms = None;
+                    state.last_error = Some("网关服务已停止或不可达。".to_string());
+                    state.last_exit = Some(GatewayExitInfo {
+                        at_ms: now_ms(),
+                        code: None,
+                        success: false,
+                    });
+                    Transition::Stopped
+                }
+                _ => Transition::None,
+            }
+        };
+
+        match transition {
+            Transition::Started => {
+                self.push_log(app, "system", "检测到网关服务正在运行。");
+                self.emit_state(app);
+            }
+            Transition::Stopped => {
+                self.push_log(app, "system", "网关服务已停止或不可达。");
+                self.emit_state(app);
+            }
+            Transition::None => {}
+        }
+    }
+
     fn state_payload(&self) -> GatewayStatePayload {
         let state = self.inner.state.lock().expect("gateway state poisoned");
         Self::state_payload_from_locked(&state)
@@ -274,13 +448,17 @@ impl GatewayState {
     fn state_payload_from_locked(state: &GatewayRuntimeState) -> GatewayStatePayload {
         GatewayStatePayload {
             command: GATEWAY_COMMAND_LABEL,
-            status: if state.runtime.is_some() {
+            status: if state.runtime.is_some() || state.service_running {
                 GatewayStatus::Running
             } else {
                 GatewayStatus::Stopped
             },
             pid: state.runtime.as_ref().map(|runtime| runtime.pid),
-            started_at_ms: state.runtime.as_ref().map(|runtime| runtime.started_at_ms),
+            started_at_ms: state
+                .runtime
+                .as_ref()
+                .map(|runtime| runtime.started_at_ms)
+                .or(state.service_started_at_ms),
             last_error: state.last_error.clone(),
             last_exit: state.last_exit.clone(),
         }
@@ -391,8 +569,6 @@ fn setup_tray(app: &mut tauri::App) -> tauri::Result<()> {
         }
         TRAY_QUIT_ID => {
             app.state::<AppLifecycleState>().mark_quitting();
-            let gateway = app.state::<GatewayState>().inner().clone();
-            let _ = gateway.stop(app);
             app.exit(0);
         }
         _ => {}
@@ -412,6 +588,13 @@ fn show_main_window(app: &AppHandle) {
 
 fn spawn_gateway_monitor(app: AppHandle, gateway: GatewayState) {
     thread::spawn(move || loop {
+        #[cfg(target_os = "windows")]
+        {
+            gateway.sync_windows_service_status(&app);
+            thread::sleep(Duration::from_secs(2));
+            continue;
+        }
+
         thread::sleep(Duration::from_secs(1));
 
         let exit_status = {
@@ -477,6 +660,52 @@ fn gateway_command() -> Command {
         command.stderr(Stdio::piped());
         command
     }
+}
+
+#[cfg(target_os = "windows")]
+fn gateway_start_command() -> Command {
+    let mut command = Command::new("cmd");
+    command.args([
+        "/C",
+        "where openclaw >nul 2>nul || (echo openclaw command not found in PATH 1>&2 & exit /b 127) && openclaw gateway start --json",
+    ]);
+    command.stdin(Stdio::null());
+    command
+}
+
+#[cfg(target_os = "windows")]
+fn gateway_install_command() -> Command {
+    let mut command = Command::new("cmd");
+    command.args([
+        "/C",
+        "where openclaw >nul 2>nul || (echo openclaw command not found in PATH 1>&2 & exit /b 127) && openclaw gateway install --json",
+    ]);
+    command.stdin(Stdio::null());
+    command
+}
+
+#[cfg(target_os = "windows")]
+fn gateway_stop_command() -> Command {
+    let mut command = Command::new("cmd");
+    command.args([
+        "/C",
+        "where openclaw >nul 2>nul || (echo openclaw command not found in PATH 1>&2 & exit /b 127) && openclaw gateway stop --json",
+    ]);
+    command.stdin(Stdio::null());
+    command
+}
+
+#[cfg(target_os = "windows")]
+fn gateway_status_command() -> Command {
+    let mut command = Command::new("cmd");
+    command.args([
+        "/C",
+        "where openclaw >nul 2>nul || (echo openclaw command not found in PATH 1>&2 & exit /b 127) && openclaw gateway status --require-rpc --json",
+    ]);
+    command.stdin(Stdio::null());
+    command.stdout(Stdio::null());
+    command.stderr(Stdio::null());
+    command
 }
 
 fn dashboard_command() -> Command {
@@ -548,6 +777,44 @@ fn stop_gateway_process(
     }
 }
 
+#[cfg(target_os = "windows")]
+fn gateway_service_is_running() -> bool {
+    gateway_status_command()
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+}
+
+#[cfg(target_os = "windows")]
+fn run_short_command(mut command: Command) -> Result<String, String> {
+    let output = command
+        .output()
+        .map_err(|error| format!("执行命令失败: {error}"))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let combined = [stdout, stderr]
+        .into_iter()
+        .filter(|text| !text.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    if output.status.success() {
+        Ok(combined)
+    } else if combined.is_empty() {
+        Err(format!("命令执行失败（退出码 {:?}）。", output.status.code()))
+    } else {
+        Err(combined)
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn log_command_output(state: &GatewayState, app: &AppHandle, output: &str) {
+    for line in output.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        state.push_log(app, "system", line.to_string());
+    }
+}
+
 fn exit_info(status: ExitStatus) -> GatewayExitInfo {
     GatewayExitInfo {
         at_ms: now_ms(),
@@ -613,8 +880,12 @@ pub fn run() {
     app.run(|app_handle: &AppHandle, event| {
         if let tauri::RunEvent::ExitRequested { .. } = event {
             app_handle.state::<AppLifecycleState>().mark_quitting();
-            let gateway = app_handle.state::<GatewayState>().inner().clone();
-            let _ = gateway.stop(app_handle);
+
+            #[cfg(not(target_os = "windows"))]
+            {
+                let gateway = app_handle.state::<GatewayState>().inner().clone();
+                let _ = gateway.stop(app_handle);
+            }
         }
     });
 }
