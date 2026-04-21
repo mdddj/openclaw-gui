@@ -1,0 +1,4 @@
+interface:
+  display_name: "OpenClaw Release"
+  short_description: "Release openclaw-gui with version sync, tagging, CI/CD checks, and GitHub Releases."
+  default_prompt: "Use this skill when releasing a new version of openclaw-gui, including version bumping, local validation, git push, tag push, and verifying the GitHub Release pipeline."
